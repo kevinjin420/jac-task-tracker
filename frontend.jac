@@ -46,7 +46,7 @@ def bootstrap_frontend(token: str) {
         }
     }
 
-    st.title("📋 Assignment Tracker");
+    st.title("Assignment Tracker");
 
     if st.button("➕ Add New Task") {
         st.session_state.new_row_active = True;
@@ -57,8 +57,106 @@ def bootstrap_frontend(token: str) {
 
     header_cols = st.columns([3, 2, 2, 2, 1]);
     header_cols[0].markdown("**Assignment**");
-    header_cols[1].markdown("**Courses**");
-    header_cols[2].markdown("**Status**");
+
+    courses_popover = header_cols[1].popover("**Courses ⚙️**");
+    courses_popover.markdown("### Manage Courses");
+
+    new_course_code = courses_popover.text_input("Course Code", key="new_course_code", placeholder="EECS270");
+    new_course_title = courses_popover.text_input("Course Title", key="new_course_title", placeholder="Intro to Logic Design");
+    new_course_desc = courses_popover.text_area("Description", key="new_course_desc", placeholder="Topics: circuits, gates, FSMs...");
+
+    if courses_popover.button("➕ Add Course", key="add_course_btn") {
+        if new_course_code {
+            try {
+                response = requests.post(
+                    "http://localhost:8000/walker/add_course",
+                    json={
+                        "code": new_course_code,
+                        "title": new_course_title,
+                        "description": new_course_desc
+                    },
+                    headers={"Authorization": f"Bearer {token}"}
+                );
+                if response.status_code == 200 {
+                    st.session_state.refresh = True;
+                    st.rerun();
+                }
+            } except Exception as e {
+                courses_popover.error(f"Error: {str(e)}");
+            }
+        }
+    }
+
+    courses_popover.markdown("---");
+    courses_popover.markdown("### Existing Courses");
+
+    for course in st.session_state.courses {
+        course_cols = courses_popover.columns([3, 1, 1]);
+        course_cols[0].markdown(f"**{course.get('code')}**");
+        course_cols[0].caption(f"{course.get('title', '')}");
+
+        if course_cols[1].button("✏️", key=f"edit_course_{course.get('code')}") {
+            st.session_state.editing_course = course.get('code');
+        }
+
+        if course_cols[2].button("🗑", key=f"del_course_{course.get('code')}") {
+            try {
+                response = requests.post(
+                    "http://localhost:8000/walker/delete_course",
+                    json={"code": course.get('code')},
+                    headers={"Authorization": f"Bearer {token}"}
+                );
+                if response.status_code == 200 {
+                    st.session_state.refresh = True;
+                    st.rerun();
+                }
+            } except Exception as e {
+                courses_popover.error(f"Error: {str(e)}");
+            }
+        }
+
+        if st.session_state.get("editing_course") == course.get('code') {
+            edit_title = courses_popover.text_input("Title", value=course.get('title', ''), key=f"edit_title_{course.get('code')}");
+            edit_desc = courses_popover.text_area("Description", value=course.get('description', ''), key=f"edit_desc_{course.get('code')}");
+
+            edit_cols = courses_popover.columns(2);
+            if edit_cols[0].button("💾 Save", key=f"save_course_{course.get('code')}") {
+                try {
+                    response = requests.post(
+                        "http://localhost:8000/walker/update_course",
+                        json={
+                            "code": course.get('code'),
+                            "title": edit_title,
+                            "description": edit_desc
+                        },
+                        headers={"Authorization": f"Bearer {token}"}
+                    );
+                    if response.status_code == 200 {
+                        st.session_state.editing_course = None;
+                        st.session_state.refresh = True;
+                        st.rerun();
+                    }
+                } except Exception as e {
+                    courses_popover.error(f"Error: {str(e)}");
+                }
+            }
+            if edit_cols[1].button("✕", key=f"cancel_edit_{course.get('code')}") {
+                st.session_state.editing_course = None;
+                st.rerun();
+            }
+        }
+    }
+
+    status_popover = header_cols[2].popover("**Status ⚙️**");
+    status_popover.markdown("### Manage Status Options");
+    status_popover.info("Status options are currently hardcoded. Custom statuses coming soon!");
+    status_popover.markdown("**Current statuses:**");
+    status_popover.markdown("- todo");
+    status_popover.markdown("- in progress");
+    status_popover.markdown("- done");
+    status_popover.markdown("- not started");
+    status_popover.markdown("- submitted");
+
     header_cols[3].markdown("**Due Date**");
     header_cols[4].markdown("**Actions**");
 

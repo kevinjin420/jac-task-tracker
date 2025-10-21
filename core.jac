@@ -26,3 +26,12 @@ edge assigned_to {
 edge belongs_to {
     # Links task to course
 }
+
+# Object for passing course information to AI classification
+obj CourseInfo {
+    has code: str;
+    has title: str;
+    has description: str;
+    has usage_count: int;
+    has keywords: list;
+}

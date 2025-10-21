@@ -1,39 +1,15 @@
+include core;
+
 import from byllm.llm { Model }
 
 glob llm = Model(model_name="gemini/gemini-2.0-flash-exp", verbose=True);
 
-node course {
-    has code: str;
-    has title: str;
-    has description: str = "";
-    has usage_count: int = 0;
-    has keywords: list = [];
-}
-
-node task {
-    has assignment: str;
-    has due_date: str;
-    has description: str = "";
-    has status: str = "todo";
-    has created_at: str = "";
-}
-
-edge assigned_to {}
-edge belongs_to {}
-
-obj CourseMatch {
-    has course_code: str;
-    has confidence: float;
-    has reasoning: str;
-}
-
 def classify_task_to_courses(
     assignment_name: str,
     task_description: str,
-    available_courses: list
+    available_courses: list[CourseInfo]
 ) -> list[str] by llm(
-    incl_info=(available_courses,),
-    reason=True
+    incl_info=(available_courses,)
 );
 
 walker add_task {
@@ -62,13 +38,15 @@ walker add_task {
             existing_courses_list = [here --> (`?course)];
             course_info = [];
             for c in existing_courses_list {
-                course_info.append({
-                    "code": c.code,
-                    "title": c.title,
-                    "description": c.description,
-                    "usage_count": c.usage_count,
-                    "keywords": c.keywords
-                });
+                course_info.append(
+                    CourseInfo(
+                        code=c.code,
+                        title=c.title,
+                        description=c.description,
+                        usage_count=c.usage_count,
+                        keywords=c.keywords
+                    )
+                );
             }
 
             if len(course_info) > 0 {
