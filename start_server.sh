@@ -9,10 +9,10 @@ if [ -f .env ]; then
     echo "✓ Loaded .env file"
 fi
 
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    echo "⚠️  ANTHROPIC_API_KEY not set!"
-    echo "Set it with: export ANTHROPIC_API_KEY='your-key'"
-    echo "Get key from: https://console.anthropic.com/"
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo "⚠️  GEMINI_API_KEY not set!"
+    echo "Set it in .env file or export GEMINI_API_KEY='your-key'"
+    echo "Get key from: https://aistudio.google.com/apikey"
     echo ""
     read -p "Continue anyway? [y/N]: " -n 1 -r
     echo ""

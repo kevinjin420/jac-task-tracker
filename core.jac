@@ -3,10 +3,11 @@ node user {
 }
 
 node course {
-    has code: str;  # Course number, project team, company, or personal tag
-    has title: str;  # Course title
-    has usage_count: int = 0;  # Track frequency for learning
-    has keywords: list = [];  # Keywords associated with this course
+    has code: str;
+    has title: str;
+    has description: str = "";
+    has usage_count: int = 0;
+    has keywords: list = [];
 }
 
 node task {

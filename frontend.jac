@@ -1,6 +1,5 @@
 import streamlit as st;
 import requests;
-import json;
 
 def bootstrap_frontend(token: str) {
     st.set_page_config(
@@ -9,83 +8,14 @@ def bootstrap_frontend(token: str) {
         layout="wide"
     );
 
-    st.markdown("""
-    <style>
-    .main { padding: 1rem; background-color: #1a1a1a; }
-    .stButton>button { width: 100%; }
-    h1 { color: #ffffff; font-size: 1.5rem; margin-bottom: 1rem; }
-
-    /* Table styles */
-    .task-table {
-        width: 100%;
-        border-collapse: collapse;
-        background-color: #1a1a1a;
-        color: #ffffff;
-        font-size: 14px;
-    }
-    .task-table th {
-        text-align: left;
-        padding: 8px 12px;
-        font-weight: 500;
-        color: #888888;
-        border-bottom: 1px solid #2a2a2a;
-        font-size: 12px;
-    }
-    .task-table td {
-        padding: 8px 12px;
-        border-bottom: 1px solid #2a2a2a;
-    }
-    .task-table tr:hover {
-        background-color: #252525;
-    }
-
-    /* Course tags */
-    .course-tag {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 3px;
-        font-size: 12px;
-        font-weight: 500;
-        margin-right: 4px;
-    }
-    .course-EECS270 { background-color: #7c3c00; color: #ffa940; }
-    .course-EECS481 { background-color: #0d5c3f; color: #4ade80; }
-    .course-EECS485 { background-color: #1e4a7c; color: #60a5fa; }
-    .course-JASECI { background-color: #7c5c00; color: #fbbf24; }
-    .course-EECS201 { background-color: #7c3c00; color: #ffa940; }
-    .course-EECS215 { background-color: #7c1c3f; color: #fb7185; }
-    .course-PERSONAL { background-color: #4a4a4a; color: #d4d4d4; }
-    .course-MROVER { background-color: #5c1e7c; color: #c084fc; }
-    .course-default { background-color: #4a4a4a; color: #d4d4d4; }
-
-    /* Status badges */
-    .status-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 3px;
-        font-size: 12px;
-        font-weight: 500;
-    }
-    .status-submitted { background-color: #0d5c3f; color: #4ade80; }
-    .status-in-progress { background-color: #7c5c00; color: #fbbf24; }
-    .status-not-started { background-color: #7c1c1c; color: #fb7185; }
-    .status-perpetual { background-color: #4a4a4a; color: #d4d4d4; }
-    .status-todo { background-color: #4a4a4a; color: #d4d4d4; }
-    .status-done { background-color: #0d5c3f; color: #4ade80; }
-    .status-blocked { background-color: #7c1c1c; color: #fb7185; }
-
-    /* Hide streamlit elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    </style>
-    """, unsafe_allow_html=True);
-
     if "tasks" not in st.session_state {
         st.session_state.tasks = [];
     }
     if "courses" not in st.session_state {
         st.session_state.courses = [];
+    }
+    if "new_row_active" not in st.session_state {
+        st.session_state.new_row_active = False;
     }
 
     if st.session_state.get("refresh", True) {
@@ -118,99 +48,108 @@ def bootstrap_frontend(token: str) {
 
     st.title("📋 Assignment Tracker");
 
-    with st.sidebar {
-        st.markdown("### ➕ Add Task");
+    if st.button("➕ Add New Task") {
+        st.session_state.new_row_active = True;
+        st.rerun();
+    }
 
-        assignment = st.text_input("Assignment", placeholder="e.g., p5");
+    st.markdown("---");
 
-        course_options = list(set([c["code"] for c in st.session_state.courses])) + ["EECS270", "EECS481", "EECS485", "JASECI", "EECS201", "PERSONAL"];
-        course = st.selectbox("Course", course_options);
+    header_cols = st.columns([3, 2, 2, 2, 1]);
+    header_cols[0].markdown("**Assignment**");
+    header_cols[1].markdown("**Courses**");
+    header_cols[2].markdown("**Status**");
+    header_cols[3].markdown("**Due Date**");
+    header_cols[4].markdown("**Actions**");
 
-        status = st.selectbox("Status", ["todo", "in progress", "done", "not started", "submitted"]);
+    if st.session_state.get("new_row_active", False) {
+        form = st.form("new_task_form");
+        cols = form.columns([3, 2, 2, 2, 1]);
 
-        due_date = st.date_input("Due Date");
+        new_assignment = cols[0].text_input("Assignment", key="new_assignment", placeholder="Enter assignment name", label_visibility="collapsed");
 
-        if st.button("Add Task") {
-            if assignment and due_date {
-                try {
-                    response = requests.post(
-                        "http://localhost:8000/walker/add_task",
-                        json={
-                            "assignment": assignment,
-                            "due_date": str(due_date),
-                            "status": status,
-                            "courses": [course],
-                            "use_ai": False
-                        },
-                        headers={"Authorization": f"Bearer {token}"}
-                    );
+        submit_clicked = form.form_submit_button("✓");
+        cancel_clicked = cols[4].form_submit_button("✕");
 
-                    if response.status_code == 200 {
-                        st.success("Task added!");
-                        st.session_state.refresh = True;
-                        st.rerun();
-                    }
-                } except Exception as e {
-                    st.error(f"Error: {str(e)}");
-                }
-            }
+        if cancel_clicked {
+            st.session_state.new_row_active = False;
+            st.rerun();
         }
 
-        st.markdown("---");
+        if submit_clicked and new_assignment and new_assignment.strip() {
+            try {
+                response = requests.post(
+                    "http://localhost:8000/walker/add_task",
+                    json={
+                        "assignment": new_assignment,
+                        "due_date": "2025-12-31",
+                        "status": "todo",
+                        "description": "",
+                        "use_ai": True
+                    },
+                    headers={"Authorization": f"Bearer {token}"}
+                );
 
-        if st.button("🔄 Refresh") {
-            st.session_state.refresh = True;
-            st.rerun();
+                if response.status_code == 200 {
+                    st.session_state.new_row_active = False;
+                    st.session_state.refresh = True;
+                    st.rerun();
+                }
+            } except Exception as e {
+                st.error(f"Error: {str(e)}");
+            }
         }
     }
 
-    if len(st.session_state.tasks) == 0 {
-        st.info("No tasks yet. Add your first task using the sidebar!");
-    } else {
-        table_html = '<table class="task-table"><thead><tr>';
-        table_html += '<th>Course</th>';
-        table_html += '<th>Assignment</th>';
-        table_html += '<th>Status</th>';
-        table_html += '<th>Due Date</th>';
-        table_html += '</tr></thead><tbody>';
+    course_options = list(set([c["code"] for c in st.session_state.courses]));
+    status_options = ["todo", "in progress", "done", "not started", "submitted"];
 
-        for task in st.session_state.tasks {
-            table_html += '<tr>';
+    idx = 0;
+    for task in st.session_state.tasks {
+        cols = st.columns([3, 2, 2, 2, 1]);
 
-            courses = task.get("courses", []);
-            if len(courses) > 0 {
-                course_html = '';
-                for c in courses {
-                    course_class = f"course-{c}";
-                    course_html += f'<span class="course-tag {course_class}">{c}</span>';
+        task_key = f"task_{idx}";
+
+        cols[0].text_input("Assignment", value=task.get("assignment", ""), key=f"{task_key}_name", disabled=True, label_visibility="collapsed");
+
+        current_courses = task.get("courses", []);
+        selected_courses = cols[1].multiselect(
+            "Courses",
+            course_options,
+            default=current_courses,
+            key=f"{task_key}_courses",
+            label_visibility="collapsed"
+        );
+
+        current_status = task.get("status", "todo");
+        selected_status = cols[2].selectbox(
+            "Status",
+            status_options,
+            index=status_options.index(current_status) if current_status in status_options else 0,
+            key=f"{task_key}_status",
+            label_visibility="collapsed"
+        );
+
+        current_due = task.get("due_date", "2025-12-31");
+        cols[3].text_input("Due Date", value=current_due, key=f"{task_key}_due", disabled=True, label_visibility="collapsed");
+
+        if cols[4].button("🗑", key=f"{task_key}_delete") {
+            try {
+                response = requests.post(
+                    "http://localhost:8000/walker/delete_task",
+                    json={"assignment": task.get("assignment")},
+                    headers={"Authorization": f"Bearer {token}"}
+                );
+                if response.status_code == 200 {
+                    st.session_state.refresh = True;
+                    st.rerun();
                 }
-                table_html += f'<td>{course_html}</td>';
-            } else {
-                table_html += '<td></td>';
+            } except Exception as e {
+                st.error(f"Error: {str(e)}");
             }
-
-            table_html += f'<td>📄 {task.get("assignment", "")}</td>';
-
-            status_val = task.get("status", "todo");
-            status_class = f"status-{status_val.replace(' ', '-')}";
-            status_display = status_val.title();
-            if status_val == "not started" {
-                status_display = "Not started";
-            } elif status_val == "in progress" {
-                status_display = "In progress";
-            } elif status_val == "todo" {
-                status_display = "To do";
-            }
-            table_html += f'<td><span class="status-badge {status_class}">{status_display}</span></td>';
-
-            table_html += f'<td>{task.get("due_date", "")}</td>';
-
-            table_html += '</tr>';
         }
 
-        table_html += '</tbody></table>';
-
-        st.markdown(table_html, unsafe_allow_html=True);
+        idx += 1;
     }
 }
 
@@ -245,6 +184,6 @@ with entry {
         token = response.json()["token"];
         bootstrap_frontend(token);
     } else {
-        st.error("Failed to authenticate. Make sure the server is running: `jac serve server.jac`");
+        st.error("Failed to authenticate. Start server: ./start_server.sh");
     }
 }

@@ -24,4 +24,4 @@ source venv/bin/activate
 echo "🌐 Frontend starting on http://localhost:8501"
 echo ""
 
-jac streamlit frontend.jac
+streamlit run run_frontend.py
