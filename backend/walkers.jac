@@ -222,7 +222,7 @@ walker add_task_with_ai_category {
         current_time = "2025-10-20T00:00:00"; # Placeholder
         today = "2025-10-20"; # Placeholder
 
-        new_task_node = here ++> task(
+        new_task_nodes = here ++> task(
             fields={
                 "name": self.task_name,
                 "category": [suggested_category],
@@ -232,14 +232,19 @@ walker add_task_with_ai_category {
             created_at=current_time
         );
 
-        report {
-            "success": True,
-            "message": "Task created with AI category",
-            "task": {
-                "fields": new_task_node.fields,
-                "created_at": new_task_node.created_at
-            }
-        };
+        if len(new_task_nodes) > 0 {
+            actual_task_node = new_task_nodes[0];
+            report {
+                "success": True,
+                "message": "Task created with AI category",
+                "task": {
+                    "fields": actual_task_node.fields,
+                    "created_at": actual_task_node.created_at
+                }
+            };
+        } else {
+            report {"success": False, "message": "Task node creation failed." };
+        }
     }
 }
 

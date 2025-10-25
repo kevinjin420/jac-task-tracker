@@ -223,7 +223,6 @@ export default function NotionTable({ apiService }: NotionTableProps) {
                     value={newTaskFields[column.name]}
                     onChange={(value) => setNewTaskFields({ ...newTaskFields, [column.name]: value })}
                     onKeyDown={column.name === 'name' ? handleNameKeyDown : undefined}
-                    disabled={column.name !== 'name'}
                   />
                 </td>
               ))}
