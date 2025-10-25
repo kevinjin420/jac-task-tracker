@@ -20,7 +20,17 @@ import os;
 import from byllm.llm {Model}
 
 glob GEMINI_API_KEY = os.getenv("GEMINI_API_KEY");
-glob llm = Model(model_name="gemini-2.0-flash", api_key=GEMINI_API_KEY);
+glob llm = Model(model_name="gemini/gemini-2.0-flash-exp", api_key=GEMINI_API_KEY);
+
+# ============ LLM HELPER FUNCTIONS ============
+
+"""Categorize a task based on available categories and their contexts"""
+def categorize_task(task_name: str, categories: list[dict]) -> str by llm();
+sem categorize_task = """
+Analyze the task name and determine which category it best fits into.
+Each category has a name and context. Return ONLY the category name, nothing else.
+Choose the most appropriate category based on the context provided.
+""";
 
 # ============ COLUMN SCHEMA MANAGEMENT ============
 
@@ -176,31 +186,17 @@ walker add_task_with_ai_category {
         # 2. If categories exist, use LLM to suggest one
         if category_column and category_column.options {
             categories = category_column.options;
-            context_str = "";
-            category_names = [];
+            category_info = [];
             for cat in categories {
                 if (isinstance(cat, dict)) {
-                    context_str += f"- {cat['name']}: {cat['context']}\n";
-                    category_names.append(cat['name']);
+                    category_info.append(cat);
                 } else {
-                    category_names.append(cat);
+                    category_info.append({"name": cat, "context": ""});
                 }
             }
 
-            if len(category_names) > 0 {
-                prompt = f"""Classify the task '{self.task_name}' into one of the following categories based on their context (if provided).
-
-Categories:
-{context_str}
-
-Return only the single best category name from this list: {category_names}.""";
-                
-                response = llm.generate(prompt=prompt);
-                llm_choice = response.strip();
-
-                if llm_choice in category_names {
-                    suggested_category = llm_choice;
-                }
+            if len(category_info) > 0 {
+                suggested_category = categorize_task(self.task_name, category_info);
             }
         }
 
