@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Column, Task } from '../types';
+import type { Column, Task, CategoryOption } from '../types';
 import { ApiService } from '../api';
 import FieldRenderer from './FieldRenderer';
-import ColumnManager from './ColumnManager';
 
 interface NotionTableProps {
   apiService: ApiService;
@@ -14,13 +13,36 @@ export default function NotionTable({ apiService }: NotionTableProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showColumnManager, setShowColumnManager] = useState(false);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskFields, setNewTaskFields] = useState<Record<string, any>>({});
+  
+  const [showCategoryMenu, setShowCategoryMenu] = useState<{x: number, y: number} | null>(null);
+  const [editingCategory, setEditingCategory] = useState<CategoryOption | null>(null);
+  const [editContext, setEditContext] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryContext, setNewCategoryContext] = useState('');
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
+
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const categoryMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadData();
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryMenuRef.current && !categoryMenuRef.current.contains(event.target as Node)) {
+        setShowCategoryMenu(null);
+      }
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   useEffect(() => {
@@ -29,11 +51,17 @@ export default function NotionTable({ apiService }: NotionTableProps) {
     }
   }, [isAddingTask]);
 
+  useEffect(() => {
+    if (editingCategory) {
+      setEditContext(editingCategory.context);
+    }
+  }, [editingCategory]);
+
   const loadData = async () => {
     try {
       let columnsData = await apiService.getColumns();
       if (columnsData.length === 0 && !hasInitialized) {
-        hasInitialized = true; // Prevent infinite loops
+        hasInitialized = true;
         await apiService.initDefaultColumns();
         columnsData = await apiService.getColumns();
       }
@@ -48,28 +76,29 @@ export default function NotionTable({ apiService }: NotionTableProps) {
   };
 
   const handleStartAddTask = () => {
-    const today = new Date().toISOString().split('T')[0];
-    const statusColumn = columns.find(c => c.name === 'status');
-    const notStartedOption = statusColumn?.options.find(o => o.toLowerCase().includes('not started'));
-
-    setNewTaskFields({
-      due_date: today,
-      category: [],
-      status: notStartedOption || (statusColumn?.options[0] || ''),
-      name: ''
-    });
+    setNewTaskFields({ name: '' });
     setIsAddingTask(true);
   };
 
-  const handleAddTask = async () => {
-    try {
-      await apiService.addTask(newTaskFields);
-      await loadData();
-      setNewTaskFields({});
-      setIsAddingTask(false);
-    } catch (error) {
-      console.error('Error adding task:', error);
-      alert('Failed to add task');
+  const handleNameKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const taskName = newTaskFields.name;
+      if (!taskName || !taskName.trim()) {
+        setIsAddingTask(false);
+        setNewTaskFields({});
+        return;
+      }
+
+      try {
+        await apiService.addTaskWithAiCategory(taskName);
+        await loadData();
+        setNewTaskFields({});
+        setIsAddingTask(false);
+      } catch (error) {
+        console.error('Error adding task:', error);
+        alert('Failed to add task with AI category.');
+      }
     }
   };
 
@@ -97,8 +126,6 @@ export default function NotionTable({ apiService }: NotionTableProps) {
       return;
     }
 
-    if (!confirm(`Delete this task?`)) return;
-
     try {
       await apiService.deleteTask(task.fields[idField], idField);
       await loadData();
@@ -106,38 +133,51 @@ export default function NotionTable({ apiService }: NotionTableProps) {
       console.error('Error deleting task:', error);
       alert('Failed to delete task');
     }
+    setContextMenu(null);
   };
 
-  const handleAddColumn = async (column: Omit<Column, 'order'>) => {
-    await apiService.addColumn(column);
-    await loadData();
-  };
-
-  const handleUpdateColumn = async (name: string, updates: { new_type?: string; new_options?: string[] }) => {
+  const handleUpdateColumn = async (name: string, updates: { new_options?: (string | CategoryOption)[] }) => {
     await apiService.updateColumn(name, updates);
     await loadData();
   };
 
-  const handleDeleteColumn = async (name: string) => {
-    await apiService.deleteColumn(name);
-    await loadData();
+  const handleAddNewCategory = async () => {
+    if (!newCategoryName.trim() || !newCategoryContext.trim()) return;
+    const categoryCol = columns.find(c => c.name === 'category');
+    if (!categoryCol) return;
+
+    const newOptionToAdd = { name: newCategoryName, context: newCategoryContext };
+    const newOptions = [...categoryCol.options, newOptionToAdd];
+    await handleUpdateColumn('category', { new_options: newOptions });
+    setNewCategoryName('');
+    setNewCategoryContext('');
   };
 
-  const handleNameKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const taskName = newTaskFields['name'];
-      if (taskName) {
-        const suggestedCategory = await apiService.suggestCategory(taskName);
-        if (suggestedCategory) {
-          setNewTaskFields(prev => ({
-            ...prev,
-            category: [...(prev.category || []), suggestedCategory]
-          }));
-        }
-      }
-    }
+  const handleDeleteCategory = async (nameToDelete: string) => {
+    const categoryCol = columns.find(c => c.name === 'category');
+    if (!categoryCol) return;
+
+    const newOptions = categoryCol.options.filter(opt => {
+      const name = typeof opt === 'object' && opt !== null ? opt.name : opt;
+      return name !== nameToDelete;
+    });
+
+    await handleUpdateColumn('category', { new_options: newOptions });
   };
+
+  const handleRowContextMenu = (e: React.MouseEvent, task: Task) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, task });
+  };
+
+  const getColumnWidth = (columnName: string) => {
+    if (columnName === 'name') return '40%';
+    if (columnName === 'category') return '25%';
+    if (columnName === 'status') return '15%';
+    return 'auto';
+  };
+
+  const categoryCol = columns.find(c => c.name === 'category');
 
   if (loading) {
     return <div className="d-flex justify-content-center align-items-center vh-100"><h2>Loading...</h2></div>;
@@ -146,29 +186,35 @@ export default function NotionTable({ apiService }: NotionTableProps) {
   return (
     <div className="container mt-5">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1>Assignment Tracker</h1>
-        <div className="d-flex gap-2">
-          <button className="btn btn-secondary" onClick={() => setShowColumnManager(true)}>
-            Manage Columns
-          </button>
-          <button className="btn btn-primary" onClick={handleStartAddTask}>
-            Add Row
-          </button>
-        </div>
+        <h1>Task Tracker</h1>
+        <button className="btn btn-primary" onClick={handleStartAddTask}>
+          Add Task
+        </button>
       </div>
 
-      <table className="table table-hover align-middle">
+      <table className="table table-hover align-middle" style={{ tableLayout: 'fixed' }}>
         <thead className="table-light">
           <tr>
             {columns.map(column => (
-              <th key={column.name} scope="col">{column.name}</th>
+              <th key={column.name} scope="col" style={{ width: getColumnWidth(column.name) }}>
+                <span
+                  className={column.name === 'category' ? 'cursor-pointer' : ''}
+                  onContextMenu={(e) => {
+                    if (column.name === 'category') {
+                      e.preventDefault();
+                      setShowCategoryMenu({ x: e.clientX, y: e.clientY });
+                    }
+                  }}
+                >
+                  {column.name}
+                </span>
+              </th>
             ))}
-            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
           {isAddingTask && (
-            <tr className="table-primary">
+            <tr className="table-primary" key="new-task-row">
               {columns.map(column => (
                 <td key={column.name}>
                   <FieldRenderer
@@ -177,18 +223,15 @@ export default function NotionTable({ apiService }: NotionTableProps) {
                     value={newTaskFields[column.name]}
                     onChange={(value) => setNewTaskFields({ ...newTaskFields, [column.name]: value })}
                     onKeyDown={column.name === 'name' ? handleNameKeyDown : undefined}
+                    disabled={column.name !== 'name'}
                   />
                 </td>
               ))}
-              <td>
-                <button className="btn btn-sm btn-success me-2" onClick={handleAddTask}>Save</button>
-                <button className="btn btn-sm btn-danger" onClick={() => { setIsAddingTask(false); setNewTaskFields({}); }}>Cancel</button>
-              </td>
             </tr>
           )}
 
           {tasks.map((task, idx) => (
-            <tr key={idx}>
+            <tr key={idx} onContextMenu={(e) => handleRowContextMenu(e, task)}>
               {columns.map(column => (
                 <td key={column.name}>
                   <FieldRenderer
@@ -198,30 +241,92 @@ export default function NotionTable({ apiService }: NotionTableProps) {
                   />
                 </td>
               ))}
-              <td>
-                <button className="btn btn-sm btn-outline-danger" onClick={() => handleDeleteTask(task)} title="Delete">
-                  Delete
-                </button>
-              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {tasks.length === 0 && !isAddingTask && (
-        <div className="text-center p-5">
-          <p>No rows yet. Click "Add Row" to get started!</p>
+      {/* Category Management Menu */}
+      {showCategoryMenu && (
+        <div ref={categoryMenuRef} className="card shadow-lg" style={{ position: 'fixed', top: showCategoryMenu.y, left: showCategoryMenu.x, width: '350px', zIndex: 1050 }}>
+          <div className="card-header">Manage Categories</div>
+          <div className="card-body" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <ul className="list-group list-group-flush">
+              {(categoryCol?.options || []).map(opt => {
+                const isObject = typeof opt === 'object' && opt !== null;
+                const name = isObject ? (opt as CategoryOption).name : opt as string;
+                const context = isObject ? (opt as CategoryOption).context : null;
+
+                return (
+                  <li key={name} className="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                      <h6 className="mb-1">{name}</h6>
+                      {context && <p className="text-muted small mb-0">{context}</p>}
+                    </div>
+                    <div className="btn-group">
+                      {isObject && (
+                        <button className="btn btn-link btn-sm" onClick={() => setEditingCategory(opt as CategoryOption)}>Edit</button>
+                      )}
+                      <button className="btn btn-link btn-sm text-danger" onClick={() => handleDeleteCategory(name)}>Delete</button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          <div className="card-footer">
+            <p className="mb-1 small fw-bold">Add New Category</p>
+            <div className="input-group mb-2">
+              <input type="text" className="form-control" placeholder="Category Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
+            </div>
+            <div className="input-group mb-2">
+              <textarea className="form-control" placeholder="Context for AI" value={newCategoryContext} onChange={(e) => setNewCategoryContext(e.target.value)} />
+            </div>
+            <button className="btn btn-success btn-sm w-100" onClick={handleAddNewCategory}>Add</button>
+          </div>
         </div>
       )}
 
-      {showColumnManager && (
-        <ColumnManager
-          columns={columns}
-          onAdd={handleAddColumn}
-          onUpdate={handleUpdateColumn}
-          onDelete={handleDeleteColumn}
-          onClose={() => setShowColumnManager(false)}
-        />
+      {/* Edit Category Modal */}
+      {editingCategory && (
+        <div className="modal fade show d-block" tabIndex={-1}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Edit Context for "{editingCategory.name}"</h5>
+                <button type="button" className="btn-close" onClick={() => setEditingCategory(null)}></button>
+              </div>
+              <div className="modal-body">
+                <textarea
+                  className="form-control"
+                  value={editContext}
+                  onChange={(e) => setEditContext(e.target.value)}
+                  rows={5}
+                  autoFocus
+                />
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingCategory(null)}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={handleSaveCategoryContext}>Save changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Row Context Menu */}
+      {contextMenu && (
+        <div ref={contextMenuRef} className="dropdown-menu show" style={{ top: contextMenu.y, left: contextMenu.x }}>
+          <a className="dropdown-item text-danger" href="#" onClick={(e) => { e.preventDefault(); handleDeleteTask(contextMenu.task); }}>
+            Delete Row
+          </a>
+        </div>
+      )}
+
+      {tasks.length === 0 && !isAddingTask && (
+        <div className="text-center p-5">
+          <p>No tasks yet. Click "Add Task" to get started!</p>
+        </div>
       )}
     </div>
   );

@@ -1,9 +1,14 @@
 export type ColumnType = "text" | "select" | "multiselect" | "date";
 
+export type CategoryOption = {
+  name: string;
+  context: string;
+};
+
 export type Column = {
   name: string;
   type: ColumnType;
-  options: string[];
+  options: (string | CategoryOption)[];
   order: number;
 };
 

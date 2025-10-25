@@ -8,21 +8,22 @@ interface FieldRendererProps {
   value: any;
   onChange: (value: any) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
   disabled?: boolean;
 }
 
 const FieldRenderer = React.forwardRef<HTMLInputElement, FieldRendererProps>(
-  ({ column, value, onChange, onKeyDown, disabled = false }, ref) => {
+  ({ column, value, onChange, onKeyDown, onBlur, disabled = false }, ref) => {
     switch (column.type) {
       case 'text':
         return (
           <input
             ref={ref}
-            type="text"
-            className="form-control"
+            className="form-control no-focus-ring"
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
+            onBlur={onBlur}
             disabled={disabled}
             placeholder={`Enter ${column.name}...`}
           />
@@ -32,7 +33,7 @@ const FieldRenderer = React.forwardRef<HTMLInputElement, FieldRendererProps>(
         return (
           <input
             type="date"
-            className="form-control"
+            className="form-control no-focus-ring"
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}

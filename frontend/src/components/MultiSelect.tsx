@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
+import type { CategoryOption } from '../types';
 
 interface MultiSelectProps {
-  options: string[];
+  options: (string | CategoryOption)[];
   selected: string[];
   onChange: (selected: string[]) => void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-export default function MultiSelect({ options, selected, onChange, placeholder = 'Select...' }: MultiSelectProps) {
+export default function MultiSelect({ options, selected, onChange, placeholder = 'Select...', disabled = false }: MultiSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -22,11 +24,11 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const toggleOption = (option: string) => {
-    if (selected.includes(option)) {
-      onChange(selected.filter(s => s !== option));
+  const toggleOption = (optionValue: string) => {
+    if (selected.includes(optionValue)) {
+      onChange(selected.filter(s => s !== optionValue));
     } else {
-      onChange([...selected, option]);
+      onChange([...selected, optionValue]);
     }
   };
 
@@ -35,7 +37,8 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
       <button
         className="btn btn-outline-secondary dropdown-toggle w-100 d-flex justify-content-between align-items-center"
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
       >
         <div className="d-flex flex-wrap gap-1">
           {selected.length === 0 ? (
@@ -55,20 +58,23 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
           {options.length === 0 ? (
             <span className="dropdown-item text-muted">No options available</span>
           ) : (
-            options.map(option => (
-              <a
-                key={option}
-                href="#"
-                className={`dropdown-item d-flex justify-content-between align-items-center ${selected.includes(option) ? 'active' : ''}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  toggleOption(option);
-                }}
-              >
-                {option}
-                {selected.includes(option) && <span>✓</span>}
-              </a>
-            ))
+            options.map(option => {
+              const optionName = typeof option === 'string' ? option : option.name;
+              return (
+                <a
+                  key={optionName}
+                  href="#"
+                  className={`dropdown-item d-flex justify-content-between align-items-center ${selected.includes(optionName) ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    toggleOption(optionName);
+                  }}
+                >
+                  {optionName}
+                  {selected.includes(optionName) && <span>✓</span>}
+                </a>
+              );
+            })
           )}
         </div>
       )}

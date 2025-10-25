@@ -40,9 +40,15 @@ export class ApiService {
     return response.data.reports[0]?.tasks || [];
   }
 
-  async addTask(fields: Record<string, any>) {
-    const response = await axios.post(`${API_BASE_URL}/walker/add_task`, { fields });
-    return response.data;
+  async addTaskWithAiCategory(taskName: string): Promise<Task> {
+    const response = await this.request(`/walker/add_task_with_ai_category`, {
+      method: 'POST',
+      body: JSON.stringify({ task_name: taskName }),
+    });
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to add task with AI category');
+    }
+    return response.task;
   }
 
   async updateTask(taskId: string, fields: Record<string, any>, idField: string = 'assignment') {

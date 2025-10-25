@@ -153,15 +153,17 @@ walker delete_column {
     }
 }
 
-walker suggest_category {
+walker add_task_with_ai_category {
+    """Create a new task and use AI to suggest the category."""
     obj __specs__ {
         static has auth: bool = False;
     }
 
     has task_name: str;
 
-    can execute with `root entry {
-        category_column = null;
+    can create with `root entry {
+        # 1. Find category column and options
+        category_column = None;
         for col in [here --> (`?column_schema)] {
             if col.name == "category" {
                 category_column = col;
@@ -169,64 +171,78 @@ walker suggest_category {
             }
         }
 
+        suggested_category = "General"; # Default category
+
+        # 2. If categories exist, use LLM to suggest one
         if category_column and category_column.options {
             categories = category_column.options;
-            prompt = f"Classify the task '{self.task_name}' into one of the following categories: {categories}. Only return the single best category name from the list.";
-            response = llm.generate(prompt=prompt);
-            suggested_category = response.strip();
-
-            if suggested_category in categories {
-               report {"success": True, "category": suggested_category};
-            } else {
-               report {"success": False, "message": "Could not determine a category."};
+            context_str = "";
+            category_names = [];
+            for cat in categories {
+                if (isinstance(cat, dict)) {
+                    context_str += f"- {cat['name']}: {cat['context']}\n";
+                    category_names.append(cat['name']);
+                } else {
+                    category_names.append(cat);
+                }
             }
-        } else {
-            report {"success": False, "message": "Category column or options not found."};
-        }
-    }
-}
 
-# ============ TASK MANAGEMENT ============
+            if len(category_names) > 0 {
+                prompt = f"""Classify the task '{self.task_name}' into one of the following categories based on their context (if provided).
 
-walker get_tasks {
-    """Get all tasks"""
-    obj __specs__ {
-        static has auth: bool = False;
-    }
+Categories:
+{context_str}
 
-    can execute with `root entry {
-        tasks = [];
-        for t in [here --> (`?task)] {
-            tasks.append({
-                "fields": t.fields,
-                "created_at": t.created_at
-            });
+Return only the single best category name from this list: {category_names}.""";
+                
+                response = llm.generate(prompt=prompt);
+                llm_choice = response.strip();
+
+                if llm_choice in category_names {
+                    suggested_category = llm_choice;
+                }
+            }
         }
 
-        report {"success": True, "tasks": tasks};
-    }
-}
+        # 3. Find default status
+        status_column = None;
+        for col in [here --> (`?column_schema)] {
+            if col.name == "status" {
+                status_column = col;
+                break;
+            }
+        }
+        not_started = "not started";
+        if status_column and status_column.options {
+            for opt in status_column.options {
+                if opt.lower() == "not started" {
+                    not_started = opt;
+                    break;
+                }
+            }
+        }
 
-walker add_task {
-    """Create a new task with dynamic fields"""
-    obj __specs__ {
-        static has auth: bool = False;
-    }
+        # 4. Create the new task
+        current_time = "2025-10-20T00:00:00"; # Placeholder
+        today = "2025-10-20"; # Placeholder
 
-    has fields: dict = {};
-
-    can create with `root entry {
-        current_time = "2025-10-20T00:00:00";
-
-        here ++> task(
-            fields=self.fields,
+        new_task_node = here ++> task(
+            fields={
+                "name": self.task_name,
+                "category": [suggested_category],
+                "status": not_started,
+                "due_date": today
+            },
             created_at=current_time
         );
 
         report {
             "success": True,
-            "message": "Task created",
-            "task": {"fields": self.fields, "created_at": current_time}
+            "message": "Task created with AI category",
+            "task": {
+                "fields": new_task_node.fields,
+                "created_at": new_task_node.created_at
+            }
         };
     }
 }
@@ -277,5 +293,24 @@ walker delete_task {
             visit t;
         }
         report {"success": True, "message": "Task deleted"};
+    }
+}
+
+walker get_tasks {
+    """Get all tasks"""
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+
+    can execute with `root entry {
+        tasks = [];
+        for t in [here --> (`?task)] {
+            tasks.append({
+                "fields": t.fields,
+                "created_at": t.created_at
+            });
+        }
+
+        report {"success": True, "tasks": tasks};
     }
 }

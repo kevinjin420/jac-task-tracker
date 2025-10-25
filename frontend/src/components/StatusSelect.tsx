@@ -4,6 +4,7 @@ interface StatusSelectProps {
   value: string;
   options: readonly string[];
   onChange: (value: string) => void;
+  disabled?: boolean;
 }
 
 const STATUS_COLOR_MAP: Record<string, string> = {
@@ -14,7 +15,7 @@ const STATUS_COLOR_MAP: Record<string, string> = {
   'submitted': 'info'
 };
 
-export default function StatusSelect({ value, options, onChange }: StatusSelectProps) {
+export default function StatusSelect({ value, options, onChange, disabled = false }: StatusSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +46,8 @@ export default function StatusSelect({ value, options, onChange }: StatusSelectP
       <button
         className={`btn btn-sm dropdown-toggle w-100 text-start bg-${color}-subtle text-${color}-emphasis`}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
       >
         {value}
       </button>
