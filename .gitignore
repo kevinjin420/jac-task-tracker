@@ -4,3 +4,6 @@ __pycache__
 *.pyc
 *.pyo
 .jac_gen
+
+rag_chatbot
+docs

@@ -1,52 +1,26 @@
 #!/bin/bash
 
-echo "🚀 Starting JAC Task Tracker"
-echo ""
+set -e
 
-if [ -f .env ]; then
-    source .env
-    echo "✓ Loaded .env file"
-fi
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_PATH="$PROJECT_DIR/venv"
 
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "⚠️  GEMINI_API_KEY not set!"
-    echo "Set it in .env file or export GEMINI_API_KEY='your-key'"
-    echo "Get key from: https://aistudio.google.com/apikey"
-    echo ""
-    read -p "Continue anyway? [y/N]: " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
-fi
+trap 'kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit' SIGINT SIGTERM
 
-source venv/bin/activate
+cd "$PROJECT_DIR/backend"
+"$VENV_PATH/bin/jac" serve main.jac &
+BACKEND_PID=$!
 
-echo "🌐 Starting backend on http://localhost:8000"
-jac serve server.jac &
-SERVER_PID=$!
-
-echo "⏳ Waiting for backend..."
-for i in {1..30}; do
-    if curl -s http://localhost:8000 > /dev/null 2>&1; then
-        echo "✓ Backend ready"
-        break
-    fi
-    sleep 1
+echo "Waiting for backend to initialize..."
+until curl -s http://localhost:8000 > /dev/null 2>&1; do
+    sleep 0.5
 done
 
-echo ""
-echo "🎨 Starting frontend on http://localhost:8501"
-streamlit run run_frontend.py &
+cd "$PROJECT_DIR/frontend"
+bun run dev &
 FRONTEND_PID=$!
 
-echo ""
-echo "✓ Both services started"
-echo "  Backend:  http://localhost:8000"
-echo "  Frontend: http://localhost:8501"
-echo ""
-echo "Press Ctrl+C to stop both services"
-
-trap "kill $SERVER_PID $FRONTEND_PID 2>/dev/null; exit" INT TERM
+echo "Backend: http://localhost:8000 (PID: $BACKEND_PID)"
+echo "Frontend: http://localhost:5173 (PID: $FRONTEND_PID)"
 
 wait

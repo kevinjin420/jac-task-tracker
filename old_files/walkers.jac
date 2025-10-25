@@ -39,7 +39,7 @@ walker add_task {
                     existing_course = root ++> course(
                         code=course_code,
                         title=course_code,
-                        usage_count=1
+                        usage_count=1   
                     );
                 }
 
