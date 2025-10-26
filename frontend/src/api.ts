@@ -1,36 +1,20 @@
 import axios from 'axios';
-import type { Column, Task } from './types';
+import type { Column, Task, CategoryOption } from './types';
 
 const API_BASE_URL = '';
 
 export class ApiService {
   // Column methods
-  async initDefaultColumns() {
-    const response = await axios.post(`${API_BASE_URL}/walker/init_default_columns`);
-    return response.data;
-  }
-
   async getColumns(): Promise<Column[]> {
     const response = await axios.post(`${API_BASE_URL}/walker/get_columns`);
     const columns = response.data.reports[0]?.columns || [];
     return columns.map((column: any) => ({ ...column, type: column.type.toLowerCase() }));
   }
 
-  async addColumn(column: Omit<Column, 'order'>) {
-    const response = await axios.post(`${API_BASE_URL}/walker/add_column`, column);
-    return response.data;
-  }
-
-  async updateColumn(name: string, updates: { new_type?: string; new_options?: string[] }) {
-    const response = await axios.post(`${API_BASE_URL}/walker/update_column`, {
-      name,
-      ...updates
+  async updateCategoryOptions(newOptions: CategoryOption[]) {
+    const response = await axios.post(`${API_BASE_URL}/walker/update_category_options`, {
+      new_options: newOptions
     });
-    return response.data;
-  }
-
-  async deleteColumn(name: string) {
-    const response = await axios.post(`${API_BASE_URL}/walker/delete_column`, { name });
     return response.data;
   }
 
@@ -40,8 +24,8 @@ export class ApiService {
     return response.data.reports[0]?.tasks || [];
   }
 
-  async addTaskWithAiCategory(taskName: string): Promise<Task> {
-    const response = await axios.post(`${API_BASE_URL}/walker/add_task_with_ai_category`, {
+  async addTask(taskName: string): Promise<Task> {
+    const response = await axios.post(`${API_BASE_URL}/walker/add_task`, {
       task_name: taskName
     });
     const report = response.data.reports[0];
@@ -51,7 +35,7 @@ export class ApiService {
     return report.task;
   }
 
-  async updateTask(taskId: string, fields: Record<string, any>, idField: string = 'assignment') {
+  async updateTask(taskId: string, fields: Record<string, any>, idField: string = 'name') {
     const response = await axios.post(`${API_BASE_URL}/walker/update_task`, {
       task_id: taskId,
       id_field: idField,
@@ -60,7 +44,7 @@ export class ApiService {
     return response.data;
   }
 
-  async deleteTask(taskId: string, idField: string = 'assignment') {
+  async deleteTask(taskId: string, idField: string = 'name') {
     const response = await axios.post(`${API_BASE_URL}/walker/delete_task`, {
       task_id: taskId,
       id_field: idField

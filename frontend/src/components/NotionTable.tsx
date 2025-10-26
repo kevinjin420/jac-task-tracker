@@ -7,8 +7,6 @@ interface NotionTableProps {
   apiService: ApiService;
 }
 
-let hasInitialized = false;
-
 export default function NotionTable({ apiService }: NotionTableProps) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -59,12 +57,7 @@ export default function NotionTable({ apiService }: NotionTableProps) {
 
   const loadData = async () => {
     try {
-      let columnsData = await apiService.getColumns();
-      if (columnsData.length === 0 && !hasInitialized) {
-        hasInitialized = true;
-        await apiService.initDefaultColumns();
-        columnsData = await apiService.getColumns();
-      }
+      const columnsData = await apiService.getColumns();
       const tasksData = await apiService.getTasks();
       setColumns(columnsData);
       setTasks(tasksData);
@@ -91,7 +84,7 @@ export default function NotionTable({ apiService }: NotionTableProps) {
       }
 
       try {
-        await apiService.addTaskWithAiCategory(taskName);
+        await apiService.addTask(taskName);
         await loadData();
         setNewTaskFields({});
         setIsAddingTask(false);
@@ -104,7 +97,7 @@ export default function NotionTable({ apiService }: NotionTableProps) {
 
   const handleUpdateTask = async (task: Task, fieldName: string, value: any) => {
     const idField = columns.find(c => c.type === 'text')?.name || columns[0]?.name;
-    if (!idField || !task.fields[idField]) {
+    if (!idField || !(idField in task.fields)) {
       alert('Cannot update task: no identifier field');
       return;
     }
@@ -121,7 +114,7 @@ export default function NotionTable({ apiService }: NotionTableProps) {
 
   const handleDeleteTask = async (task: Task) => {
     const idField = columns.find(c => c.type === 'text')?.name || columns[0]?.name;
-    if (!idField || !task.fields[idField]) {
+    if (!idField || !(idField in task.fields)) {
       alert('Cannot delete task: no identifier field');
       return;
     }
@@ -136,11 +129,6 @@ export default function NotionTable({ apiService }: NotionTableProps) {
     setContextMenu(null);
   };
 
-  const handleUpdateColumn = async (name: string, updates: { new_options?: (string | CategoryOption)[] }) => {
-    await apiService.updateColumn(name, updates);
-    await loadData();
-  };
-
   const handleAddNewCategory = async () => {
     if (!newCategoryName.trim() || !newCategoryContext.trim()) return;
     const categoryCol = columns.find(c => c.name === 'category');
@@ -148,7 +136,8 @@ export default function NotionTable({ apiService }: NotionTableProps) {
 
     const newOptionToAdd = { name: newCategoryName, context: newCategoryContext };
     const newOptions = [...categoryCol.options, newOptionToAdd];
-    await handleUpdateColumn('category', { new_options: newOptions });
+    await apiService.updateCategoryOptions(newOptions);
+    await loadData();
     setNewCategoryName('');
     setNewCategoryContext('');
   };
@@ -162,7 +151,25 @@ export default function NotionTable({ apiService }: NotionTableProps) {
       return name !== nameToDelete;
     });
 
-    await handleUpdateColumn('category', { new_options: newOptions });
+    await apiService.updateCategoryOptions(newOptions);
+    await loadData();
+  };
+
+  const handleSaveCategoryContext = async () => {
+    if (!editingCategory) return;
+    const categoryCol = columns.find(c => c.name === 'category');
+    if (!categoryCol) return;
+
+    const newOptions = categoryCol.options.map(opt => {
+      if (typeof opt === 'object' && opt !== null && opt.name === editingCategory.name) {
+        return { ...opt, context: editContext };
+      }
+      return opt;
+    });
+
+    await apiService.updateCategoryOptions(newOptions);
+    await loadData();
+    setEditingCategory(null);
   };
 
   const handleRowContextMenu = (e: React.MouseEvent, task: Task) => {
@@ -223,6 +230,7 @@ export default function NotionTable({ apiService }: NotionTableProps) {
                     value={newTaskFields[column.name]}
                     onChange={(value) => setNewTaskFields({ ...newTaskFields, [column.name]: value })}
                     onKeyDown={column.name === 'name' ? handleNameKeyDown : undefined}
+                    disabled={column.name !== 'name'}
                   />
                 </td>
               ))}
@@ -245,7 +253,6 @@ export default function NotionTable({ apiService }: NotionTableProps) {
         </tbody>
       </table>
 
-      {/* Category Management Menu */}
       {showCategoryMenu && (
         <div ref={categoryMenuRef} className="card shadow-lg" style={{ position: 'fixed', top: showCategoryMenu.y, left: showCategoryMenu.x, width: '350px', zIndex: 1050 }}>
           <div className="card-header">Manage Categories</div>
@@ -286,7 +293,6 @@ export default function NotionTable({ apiService }: NotionTableProps) {
         </div>
       )}
 
-      {/* Edit Category Modal */}
       {editingCategory && (
         <div className="modal fade show d-block" tabIndex={-1}>
           <div className="modal-dialog modal-dialog-centered">
@@ -313,7 +319,6 @@ export default function NotionTable({ apiService }: NotionTableProps) {
         </div>
       )}
 
-      {/* Row Context Menu */}
       {contextMenu && (
         <div ref={contextMenuRef} className="dropdown-menu show" style={{ top: contextMenu.y, left: contextMenu.x }}>
           <a className="dropdown-item text-danger" href="#" onClick={(e) => { e.preventDefault(); handleDeleteTask(contextMenu.task); }}>
